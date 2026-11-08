@@ -29,3 +29,14 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "data_lake" {
     }
   }
 }
+
+# Data lake zones (S3 "folders" are just empty objects ending in /)
+locals {
+  zones = ["raw", "validated", "rejected", "curated", "dq-reports", "athena-results"]
+}
+
+resource "aws_s3_object" "zones" {
+  for_each = toset(local.zones)
+  bucket   = aws_s3_bucket.data_lake.id
+  key      = "${each.value}/"
+}
