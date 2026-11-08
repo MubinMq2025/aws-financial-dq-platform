@@ -1,0 +1,15 @@
+environment: dev
+aws_region: ap-southeast-2
+aws_profile: dq-dev
+project_name: fin-dq
+s3:
+  bucket_name: fin-dq-dev-046749917047
+  prefixes:
+    raw: raw/
+    validated: validated/
+    rejected: rejected/
+    curated: curated/
+    dq_reports: dq-reports/
+data_generation:
+  num_records: 10000
+  defect_rate: 0.05

@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project-specific
+data/sample/*.csv
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
