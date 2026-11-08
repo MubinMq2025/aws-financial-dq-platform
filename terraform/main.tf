@@ -40,3 +40,56 @@ resource "aws_s3_object" "zones" {
   bucket   = aws_s3_bucket.data_lake.id
   key      = "${each.value}/"
 }
+
+# Automatic cleanup rules (cost control)
+# object_size_greater_than = 0 protects the empty zone "folder" markers from being deleted
+resource "aws_s3_bucket_lifecycle_configuration" "data_lake" {
+  bucket = aws_s3_bucket.data_lake.id
+
+  rule {
+    id     = "expire-athena-results"
+    status = "Enabled"
+    filter {
+      and {
+        prefix                   = "athena-results/"
+        object_size_greater_than = 0
+      }
+    }
+    expiration { days = 7 }
+  }
+
+  rule {
+    id     = "expire-rejected"
+    status = "Enabled"
+    filter {
+      and {
+        prefix                   = "rejected/"
+        object_size_greater_than = 0
+      }
+    }
+    expiration { days = 90 }
+  }
+
+  rule {
+    id     = "archive-then-expire-raw"
+    status = "Enabled"
+    filter {
+      and {
+        prefix                   = "raw/"
+        object_size_greater_than = 0
+      }
+    }
+    transition {
+      days          = 30
+      storage_class = "STANDARD_IA"
+    }
+    expiration { days = 365 }
+  }
+
+  rule {
+    id     = "abort-incomplete-uploads"
+    status = "Enabled"
+    filter {}
+    abort_incomplete_multipart_upload { days_after_initiation = 7 }
+  }
+}
