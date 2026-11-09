@@ -72,7 +72,9 @@ def load_config(env: str) -> dict:
 def make_clean_transaction(fake: Faker, batch_date: date, customers: list[str], merchants: list[str]) -> dict:
     """Build one valid transaction for the given business date."""
     start = datetime(batch_date.year, batch_date.month, batch_date.day, tzinfo=timezone.utc)
-    ts = start + timedelta(seconds=random.randint(0, 86_399))
+    # If the batch date is today, only use times that have already happened (no accidental future timestamps)
+    max_seconds = min(86_399, int((datetime.now(timezone.utc) - start).total_seconds()))
+    ts = start + timedelta(seconds=random.randint(0, max_seconds))
     return {
         "transaction_id": f"TXN-{uuid.uuid4().hex[:16].upper()}",
         "customer_id": random.choice(customers),
@@ -163,6 +165,8 @@ def main() -> None:
     num_records = args.records or gen_cfg["num_records"]
     defect_rate = gen_cfg["defect_rate"]
     batch_date = date.fromisoformat(args.date)
+    if batch_date > datetime.now(timezone.utc).date():
+        raise SystemExit(f"Batch date {batch_date} is in the future (UTC). Use today's date or earlier.")
 
     logger.info("Generating %s records for %s (env=%s, defect_rate=%.0f%%)", num_records, batch_date, args.env, defect_rate * 100)
     transactions, defects = generate_batch(num_records, defect_rate, batch_date, args.seed)
