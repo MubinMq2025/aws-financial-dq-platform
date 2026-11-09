@@ -226,3 +226,4 @@ data/sample/*.csv
 *.tfstate.*
 *.tfvars
 data/output/
+build/
