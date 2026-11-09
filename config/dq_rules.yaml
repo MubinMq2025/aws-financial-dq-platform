@@ -1,0 +1,110 @@
+# Data Quality Contract: financial transactions
+#
+# This file is the single source of truth for what "good data" means.
+# The validation engine reads these rules; it contains no hardcoded thresholds.
+# To change a rule (e.g. allow a new currency), edit this file, not the code.
+#
+# severity:
+#   reject -> the row is moved to the rejected zone
+#   warn   -> the issue is reported, but data still flows (used for file-level checks)
+
+dataset: transactions
+version: 1
+
+columns:
+  transaction_id: { type: string,    required: true }
+  customer_id:    { type: string,    required: true }
+  merchant_id:    { type: string,    required: true }
+  transaction_ts: { type: timestamp, required: true }
+  amount:         { type: decimal,   required: true }
+  currency:       { type: string,    required: true }
+  payment_method: { type: string,    required: true }
+  payment_source: { type: string,    required: true }
+  status:         { type: string,    required: true }
+  country:        { type: string,    required: true }
+  merchant_name:  { type: string,    required: false }
+
+row_rules:
+  - id: DQ001
+    name: required_fields_present
+    description: Mandatory columns must not be empty
+    check: not_null
+    columns: [transaction_id, customer_id, merchant_id, transaction_ts, amount, currency]
+    severity: reject
+
+  - id: DQ002
+    name: unique_transaction_id
+    description: Each transaction_id may appear only once in a file (first occurrence is kept)
+    check: unique
+    column: transaction_id
+    severity: reject
+
+  - id: DQ003
+    name: amount_is_numeric
+    description: Amount must be a valid number
+    check: numeric
+    column: amount
+    severity: reject
+
+  - id: DQ004
+    name: amount_in_range
+    description: Amount must be greater than 0 and not unrealistically large
+    check: range
+    column: amount
+    min_exclusive: 0
+    max_inclusive: 1000000
+    severity: reject
+
+  - id: DQ005
+    name: timestamp_is_valid
+    description: Timestamp must be ISO 8601 UTC (e.g. 2026-11-08T03:44:06Z)
+    check: timestamp_format
+    column: transaction_ts
+    format: "%Y-%m-%dT%H:%M:%SZ"
+    severity: reject
+
+  - id: DQ006
+    name: timestamp_not_in_future
+    description: Transactions cannot happen in the future (5 minute tolerance for clock drift)
+    check: not_future
+    column: transaction_ts
+    tolerance_minutes: 5
+    severity: reject
+
+  - id: DQ007
+    name: currency_is_valid
+    description: Currency must be an uppercase ISO 4217 code from the approved list
+    check: allowed_values
+    column: currency
+    values: [AUD, USD, EUR, GBP, SGD]
+    severity: reject
+
+  - id: DQ008
+    name: payment_method_is_valid
+    check: allowed_values
+    column: payment_method
+    values: [card, bank_transfer, digital_wallet, bnpl]
+    severity: reject
+
+  - id: DQ009
+    name: status_is_valid
+    check: allowed_values
+    column: status
+    values: [approved, declined, refunded]
+    severity: reject
+
+file_rules:
+  - id: DQ100
+    name: expected_volume
+    description: Row count outside the normal range may mean a broken or partial feed
+    check: row_count_between
+    min: 1000
+    max: 50000
+    severity: warn
+
+  - id: DQ101
+    name: max_reject_rate
+    description: If too many rows fail, the whole source is probably broken
+    check: reject_rate_below
+    max_rate: 0.10
+    severity: warn
