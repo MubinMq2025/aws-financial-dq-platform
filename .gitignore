@@ -225,3 +225,4 @@ data/sample/*.csv
 *.tfstate
 *.tfstate.*
 *.tfvars
+data/output/
