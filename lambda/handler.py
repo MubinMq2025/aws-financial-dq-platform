@@ -88,7 +88,8 @@ def process_file(bucket: str, key: str) -> dict:
     s3.put_object(
         Bucket=bucket,
         Key=keys["dq_report"],
-        Body=json.dumps(report, indent=2).encode("utf-8"),
+        # One line per report: Athena's JSON reader needs one JSON object per line
+        Body=json.dumps(report).encode("utf-8"),
         ContentType="application/json",
         ServerSideEncryption="AES256",
     )
