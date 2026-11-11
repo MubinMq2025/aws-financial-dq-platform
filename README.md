@@ -20,31 +20,28 @@ This platform catches those problems **before** the data is used, keeps an audit
 ## Architecture
 
 ```mermaid
-flowchart LR
-    SRC[Payment sources<br/>CSV files] -->|upload| RAW[(S3 raw/<br/>date-partitioned)]
-    RAW -->|Object Created event| EB[EventBridge rule<br/>raw/ prefix only]
-    EB --> SFN{{Step Functions<br/>pipeline}}
+flowchart TD
+    A[Payment sources<br/>daily CSV files] --> B[(S3 raw/<br/>year/month/day)]
+    B -->|new file event| C[EventBridge rule]
+    C --> D{{Step Functions pipeline}}
 
-    subgraph SFN_STEPS[Orchestrated steps]
-        direction TB
-        L[Lambda validator<br/>9 row rules + 2 file rules] --> G[Glue ETL job<br/>PySpark]
-    end
-    SFN --> L
+    D -->|step 1| E[Lambda validator<br/>data quality rules]
+    E --> F[(S3 validated/)]
+    E --> G[(S3 rejected/<br/>with reasons)]
+    E --> H[(S3 dq-reports/)]
 
-    L --> VAL[(S3 validated/)]
-    L --> REJ[(S3 rejected/<br/>+ rejection reasons)]
-    L --> REP[(S3 dq-reports/<br/>JSON per file)]
-    VAL --> G
-    G --> CUR[(S3 curated/<br/>Parquet, deduplicated)]
+    D -->|step 2| I[Glue ETL job<br/>dedupe + Parquet]
+    F --> I
+    I --> J[(S3 curated/)]
 
-    CUR --> CAT[Glue Data Catalog<br/>partition projection]
-    REJ --> CAT
-    REP --> CAT
-    CAT --> ATH[Athena<br/>SQL + views]
+    J --> K[Glue Data Catalog]
+    G --> K
+    H --> K
+    K --> L[Athena SQL + views]
 
-    L -. EMF metrics .-> CW[CloudWatch<br/>dashboard + alarms]
-    SFN -. failed runs .-> SNS[SNS email alerts]
-    CW -. reject rate > 10% .-> SNS
+    E -.metrics.-> M[CloudWatch<br/>dashboard + alarms]
+    M -.alerts.-> N[SNS email]
+    D -.failures.-> N
 ```
 
 ### How a file moves through the system
