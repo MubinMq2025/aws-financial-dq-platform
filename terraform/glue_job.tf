@@ -58,9 +58,14 @@ data "aws_iam_policy_document" "glue_curate_s3" {
   }
 
   statement {
-    sid       = "WriteCurated"
-    actions   = ["s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"]
-    resources = ["${aws_s3_bucket.data_lake.arn}/curated/*"]
+    sid     = "WriteCurated"
+    actions = ["s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"]
+    resources = [
+      "${aws_s3_bucket.data_lake.arn}/curated/*",
+      # When Glue's S3 layer empties a folder during overwrite, it writes a
+      # "folder placeholder" object named <folder>_$folder$ next to it.
+      "${aws_s3_bucket.data_lake.arn}/curated_$folder$",
+    ]
   }
 }
 

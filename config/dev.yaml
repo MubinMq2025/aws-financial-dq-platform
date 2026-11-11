@@ -1,6 +1,6 @@
 environment: dev
 aws_region: ap-southeast-2
-aws_profile: dq-dev
+aws_profile: dq
 project_name: fin-dq
 s3:
   bucket_name: fin-dq-dev-046749917047

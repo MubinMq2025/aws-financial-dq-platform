@@ -1,9 +1,9 @@
 # ---------------------------------------------------------------------------
-# Event-driven trigger: a new file in raw/ automatically starts validation.
+# Event-driven trigger: a new file in raw/ automatically starts the pipeline.
 #
-#   S3 (Object Created) --> EventBridge rule (only raw/ keys) --> Lambda validator
+#   S3 (Object Created) --> EventBridge rule (only raw/ keys) --> Step Functions pipeline
 #
-# Only raw/ is matched, so the Lambda's own outputs (validated/, rejected/, ...)
+# Only raw/ is matched, so the pipeline's own outputs (validated/, rejected/, ...)
 # never re-trigger it. No infinite loops.
 # Cost: S3 -> EventBridge events are free; rule matching is free for AWS events.
 # ---------------------------------------------------------------------------
@@ -29,18 +29,39 @@ resource "aws_cloudwatch_event_rule" "raw_file_arrived" {
   })
 }
 
-# 3. Send matching events to the validator Lambda
-resource "aws_cloudwatch_event_target" "validator" {
-  rule      = aws_cloudwatch_event_rule.raw_file_arrived.name
-  target_id = "validator-lambda"
-  arn       = aws_lambda_function.validator.arn
+# 3. EventBridge needs its own identity to start the state machine
+data "aws_iam_policy_document" "events_assume_role" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+  }
 }
 
-# 4. Allow EventBridge (and only this rule) to invoke the Lambda
-resource "aws_lambda_permission" "allow_eventbridge" {
-  statement_id  = "AllowEventBridgeRawFileArrived"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.validator.function_name
-  principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.raw_file_arrived.arn
+resource "aws_iam_role" "events_start_pipeline" {
+  name               = "${var.project_name}-${var.environment}-events-start-pipeline"
+  assume_role_policy = data.aws_iam_policy_document.events_assume_role.json
+}
+
+data "aws_iam_policy_document" "events_start_pipeline" {
+  statement {
+    actions   = ["states:StartExecution"]
+    resources = [aws_sfn_state_machine.pipeline.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "events_start_pipeline" {
+  name   = "start-pipeline"
+  role   = aws_iam_role.events_start_pipeline.id
+  policy = data.aws_iam_policy_document.events_start_pipeline.json
+}
+
+# 4. Send matching events to the pipeline (previously: straight to the Lambda)
+resource "aws_cloudwatch_event_target" "pipeline" {
+  rule      = aws_cloudwatch_event_rule.raw_file_arrived.name
+  target_id = "pipeline-state-machine"
+  arn       = aws_sfn_state_machine.pipeline.arn
+  role_arn  = aws_iam_role.events_start_pipeline.arn
 }
