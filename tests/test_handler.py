@@ -69,3 +69,12 @@ def test_non_raw_file_is_skipped(fake_s3):
     result = handler.lambda_handler({"key": "validated/some_file.csv"}, None)
     assert result == {"processed": [], "skipped": ["validated/some_file.csv"]}
     assert fake_s3.uploaded == {}
+
+
+def test_metrics_are_emitted_in_emf_format(fake_s3, capsys):
+    handler.lambda_handler({"key": RAW_KEY}, None)
+    emf_lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if '"_aws"' in line]
+    assert len(emf_lines) == 1
+    metrics = emf_lines[0]
+    assert metrics["_aws"]["CloudWatchMetrics"][0]["Namespace"] == "FinDQ"
+    assert (metrics["TotalRows"], metrics["RejectedRows"], metrics["RejectRatePercent"]) == (2, 1, 50.0)

@@ -10,6 +10,7 @@ Usage (from the repo root, with .venv active):
     python -m src.data_generator.generate_transactions --env dev
     python -m src.data_generator.generate_transactions --env dev --date 2026-11-08 --batch 2 --seed 7
     python -m src.data_generator.generate_transactions --env dev --records 500   # override volume
+    python -m src.data_generator.generate_transactions --env dev --defect-rate 0.3   # simulate a bad source
 
 Outputs (in data/sample/):
     transactions_<date>_batch<NNN>.csv          -> the data the pipeline ingests
@@ -154,6 +155,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch", type=int, default=1, help="Batch number for this date")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible output")
     parser.add_argument("--records", type=int, help="Override number of records (e.g. to simulate a volume anomaly)")
+    parser.add_argument("--defect-rate", type=float, help="Override share of broken rows, 0 to 1 (e.g. 0.3 to simulate a bad source)")
     return parser.parse_args()
 
 
@@ -163,7 +165,7 @@ def main() -> None:
     gen_cfg = config["data_generation"]
 
     num_records = args.records or gen_cfg["num_records"]
-    defect_rate = gen_cfg["defect_rate"]
+    defect_rate = args.defect_rate if args.defect_rate is not None else gen_cfg["defect_rate"]
     batch_date = date.fromisoformat(args.date)
     if batch_date > datetime.now(timezone.utc).date():
         raise SystemExit(f"Batch date {batch_date} is in the future (UTC). Use today's date or earlier.")

@@ -21,6 +21,7 @@ import io
 import json
 import logging
 import os
+import time
 import urllib.parse
 
 import boto3
@@ -35,6 +36,8 @@ logger.setLevel(logging.INFO)
 
 RAW_PREFIX = "raw/"
 ZONE_PREFIXES = {"validated": "validated/", "rejected": "rejected/", "dq_reports": "dq-reports/"}
+METRICS_NAMESPACE = "FinDQ"
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 
 # Created once per Lambda container and reused across warm invocations (faster)
 s3 = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "ap-southeast-2"))
@@ -72,6 +75,42 @@ def put_csv(bucket: str, key: str, df: pd.DataFrame) -> None:
     )
 
 
+def publish_metrics(source_key: str, report: dict) -> None:
+    """
+    Emit data quality metrics using CloudWatch Embedded Metric Format (EMF).
+
+    Printing this specially shaped JSON line to the logs is enough: CloudWatch
+    turns it into real metrics automatically. No extra API calls or permissions.
+    """
+    print(json.dumps({
+        "_aws": {
+            "Timestamp": int(time.time() * 1000),
+            "CloudWatchMetrics": [{
+                "Namespace": METRICS_NAMESPACE,
+                "Dimensions": [["Environment"]],
+                "Metrics": [
+                    {"Name": "TotalRows", "Unit": "Count"},
+                    {"Name": "RejectedRows", "Unit": "Count"},
+                    {"Name": "RejectRatePercent", "Unit": "Percent"},
+                    {"Name": "Warnings", "Unit": "Count"},
+                ],
+            }],
+        },
+        # Dimension value
+        "Environment": ENVIRONMENT,
+        # Metric values
+        "TotalRows": report["total_rows"],
+        "RejectedRows": report["rejected_rows"],
+        "RejectRatePercent": round(report["reject_rate"] * 100, 2),
+        "Warnings": len(report["warnings"]),
+        # Extra searchable context (not metrics)
+        "event": "file_validated",
+        "source_key": source_key,
+        "status": report["status"],
+        "warning_rules": [w["rule_id"] for w in report["warnings"]],
+    }))
+
+
 def process_file(bucket: str, key: str) -> dict:
     """Validate one raw file and write its three outputs. Returns the report."""
     logger.info("Processing s3://%s/%s", bucket, key)
@@ -94,16 +133,7 @@ def process_file(bucket: str, key: str) -> dict:
         ServerSideEncryption="AES256",
     )
 
-    # One structured log line per file: easy to search and graph in CloudWatch
-    logger.info(json.dumps({
-        "event": "file_validated",
-        "source_key": key,
-        "status": report["status"],
-        "total_rows": report["total_rows"],
-        "rejected_rows": report["rejected_rows"],
-        "reject_rate": report["reject_rate"],
-        "warnings": [w["rule_id"] for w in report["warnings"]],
-    }))
+    publish_metrics(key, report)
     return report
 
 

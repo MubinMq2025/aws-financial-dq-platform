@@ -86,6 +86,7 @@ resource "aws_lambda_function" "validator" {
   environment {
     variables = {
       DATA_BUCKET = aws_s3_bucket.data_lake.bucket
+      ENVIRONMENT = var.environment
     }
   }
 
